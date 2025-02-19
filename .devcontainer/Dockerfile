@@ -12,6 +12,7 @@ RUN dnf install -y \
     iptables \
     selinux-policy-targeted \
     conntrack-tools \
+    dpkg \
     && dnf clean all
 
 # Install kubectl
