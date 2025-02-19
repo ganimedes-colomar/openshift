@@ -1,49 +1,49 @@
-# Use a Fedora-based image for better compatibility with MicroShift
-FROM fedora:latest
+FROM registry.redhat.io/rhel9-eus/rhel-9.4-bootc:9.4
 
-# Install dependencies
-RUN dnf module enable -y cri-o:1.21 --skip-unavailable && \
-    dnf copr enable -y @redhat-et/microshift --skip-unavailable
-RUN dnf install -y \
-    curl \
-    sudo \
-    bash-completion \
-    jq \
-    iproute \
-    iputils \
-    iptables \
-    selinux-policy-targeted \
-    conntrack-tools \
-    dpkg \
-    cri-o cri-tools \
-    microshift \
-    && dnf clean all
-RUN firewall-cmd --zone=trusted --add-source=10.42.0.0/16 --permanent && \
-    firewall-cmd --zone=public --add-port=80/tcp --permanent && \
-    firewall-cmd --zone=public --add-port=443/tcp --permanent && \
-    firewall-cmd --zone=public --add-port=5353/udp --permanent && \
-    firewall-cmd --reload
-RUN systemctl enable crio --now && systemctl enable microshift --now
+ARG USHIFT_VER=4.17
+# hadolint ignore=SC1091
+RUN . /etc/os-release && dnf upgrade -y --releasever="${VERSION_ID}" && \
+    dnf config-manager \
+        --set-enabled "rhocp-${USHIFT_VER}-for-rhel-9-$(uname -m)-rpms" \
+        --set-enabled "fast-datapath-for-rhel-9-$(uname -m)-rpms" && \
+    dnf install -y firewalld microshift && \
+    systemctl enable microshift && \
+    dnf clean all
 
-# Install kubectl
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/
+# Create a default 'redhat' user with the specified password.
+# Add it to the 'wheel' group to allow for running sudo commands.
+ARG USER_PASSWD
+RUN if [ -z "${USER_PASSWD}" ] ; then \
+        echo USER_PASSWD is a mandatory build argument && exit 1 ; \
+    fi
+# hadolint ignore=DL4006
+RUN useradd -m -d /var/home/redhat -G wheel redhat && \
+    echo "redhat:${USER_PASSWD}" | chpasswd
 
+# Mandatory firewall configuration
+RUN firewall-offline-cmd --zone=public --add-port=22/tcp && \
+    firewall-offline-cmd --zone=trusted --add-source=10.42.0.0/16 && \
+    firewall-offline-cmd --zone=trusted --add-source=169.254.169.1 && \
+    firewall-offline-cmd --zone=trusted --add-source=fd01::/48
+    # Application-specific firewall configuration
+RUN firewall-offline-cmd --zone=public --add-port=80/tcp && \
+    firewall-offline-cmd --zone=public --add-port=443/tcp && \
+    firewall-offline-cmd --zone=public --add-port=30000-32767/tcp && \
+    firewall-offline-cmd --zone=public --add-port=30000-32767/udp
 
-# Install OpenShift CLI (oc)
-RUN curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz \
-    && tar -xvf oc.tar.gz \
-    && mv oc /usr/local/bin/ \
-    && rm oc.tar.gz
+# Create a systemd unit to recursively make the root filesystem subtree
+# shared as required by OVN images
+RUN cat > /etc/systemd/system/microshift-make-rshared.service <<'EOF'
+[Unit]
+Description=Make root filesystem shared
+Before=microshift.service
+ConditionVirtualization=container
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mount --make-rshared /
+[Install]
+WantedBy=multi-user.target
+EOF
 
-RUN mkdir ~/.kube
-RUN cat /var/lib/microshift/resources/kubeadmin/kubeconfig > ~/.kube/config
-
-# Add setup scripts
-COPY setup-microshift.sh /usr/local/bin/setup-microshift.sh
-RUN chmod +x /usr/local/bin/setup-microshift.sh
-RUN bash /usr/local/bin/setup-microshift.sh
-
-CMD ["/bin/bash"]
-
+# hadolint ignore=DL3059
+RUN systemctl enable microshift-make-rshared.service
