@@ -2,8 +2,8 @@
 FROM fedora:latest
 
 # Install dependencies
-RUN dnf module enable -y cri-o:1.21 && \
-    dnf copr enable -y @redhat-et/microshift
+RUN dnf module enable -y cri-o:1.21 --skip-unavailable && \
+    dnf copr enable -y @redhat-et/microshift --skip-unavailable
 RUN dnf install -y \
     curl \
     sudo \
