@@ -35,6 +35,7 @@ RUN curl -LO https://github.com/redhat-et/microshift/releases/latest/download/mi
 # Add setup scripts
 COPY setup-microshift.sh /usr/local/bin/setup-microshift.sh
 RUN chmod +x /usr/local/bin/setup-microshift.sh
+RUN bash /usr/local/bin/setup-microshift.sh
 
 CMD ["/bin/bash"]
 
