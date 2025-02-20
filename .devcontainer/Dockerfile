@@ -1,30 +1,12 @@
-# Use a Fedora-based image for better compatibility with MicroShift
-FROM fedora:latest
+FROM alpine:latest 
 
-# Install dependencies
-RUN dnf install -y \
-    curl \
-    sudo \
-    bash-completion \
-    jq \
-    iproute \
-    iputils \
-    iptables \
-    selinux-policy-targeted \
-    conntrack-tools \
-    && dnf clean all
+ARG KIND_VERSION=0.14.0
 
-# Install kubectl
-RUN curl -LO "https://dl.k8s.io/release/v1.32.2/bin/linux/amd64/kubectl"     && chmod +x kubectl     && mv kubectl /usr/local/bin/
+RUN apk add --no-cache curl docker-cli git
 
-# Install kind (for Kubernetes)
-RUN curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64     && chmod +x /usr/local/bin/kind
+RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+RUN chmod +x ./kubectl
+RUN mv ./kubectl /usr/local/bin/kubectl
 
-# Install Helm
-RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-# Add setup scripts
-COPY setup-kind.sh /usr/local/bin/setup-kind.sh
-RUN chmod +x /usr/local/bin/setup-kind.sh 
-
-CMD ["/bin/bash"]
+RUN curl -L https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64 -o /usr/local/bin/kind && \
+    chmod +x /usr/local/bin/kind
